@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>대지 및 건축물 규모 시뮬레이터</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 태블릿 터치 친화적 슬라이더 */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 1.5rem;
+            background: #e5e7eb;
+            border-radius: 9999px;
+            outline: none;
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        /* 건축물 애니메이션 효과 */
+        .building-part {
+            transition: all 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans p-4 md:p-8 selection:bg-blue-200">
+
+    <div class="max-w-6xl mx-auto bg-white rounded-2xl shadow-lg overflow-hidden flex flex-col lg:flex-row">
+        
+        <!-- 왼쪽: 조작부 -->
+        <div class="w-full lg:w-1/3 bg-gray-50 p-6 border-r border-gray-200">
+            <h1 class="text-2xl font-bold mb-6 text-gray-900">🏢 건축 규모 시뮬레이터</h1>
+            
+            <div class="space-y-6">
+                <!-- 법적 기준 설정 -->
+                <div class="p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+                    <h2 class="font-bold text-gray-700 border-b pb-2 mb-4">⚖️ 법정 기준 설정</h2>
+                    <div class="mb-4">
+                        <label class="flex justify-between text-sm font-semibold text-gray-600">
+                            <span>기준 건폐율 (Max)</span>
+                            <span id="val-max-cov" class="text-blue-600">60%</span>
+                        </label>
+                        <input type="range" id="in-max-cov" min="10" max="100" step="5" value="60">
+                    </div>
+                    <div>
+                        <label class="flex justify-between text-sm font-semibold text-gray-600">
+                            <span>기준 용적률 (Max)</span>
+                            <span id="val-max-far" class="text-blue-600">200%</span>
+                        </label>
+                        <input type="range" id="in-max-far" min="50" max="1000" step="50" value="200">
+                    </div>
+                </div>
+
+                <!-- 내 설계 설정 -->
+                <div class="p-4 bg-white rounded-xl shadow-sm border border-blue-200">
+                    <h2 class="font-bold text-blue-700 border-b pb-2 mb-4">📐 내 건물 설계하기</h2>
+                    <div class="mb-4">
+                        <label class="flex justify-between text-sm font-semibold text-gray-600">
+                            <span>대지면적 (내 땅)</span>
+                            <span id="val-land" class="text-blue-600">500 m²</span>
+                        </label>
+                        <input type="range" id="in-land" min="100" max="1000" step="50" value="500">
+                    </div>
+                    <div class="mb-4">
+                        <label class="flex justify-between text-sm font-semibold text-gray-600">
+                            <span>건축면적 (1층 바닥)</span>
+                            <span id="val-build" class="text-blue-600">250 m²</span>
+                        </label>
+                        <input type="range" id="in-build" min="10" max="500" step="10" value="250">
+                    </div>
+                    <div>
+                        <label class="flex justify-between text-sm font-semibold text-gray-600">
+                            <span>건물 층수</span>
+                            <span id="val-floor" class="text-blue-600">3 층</span>
+                        </label>
+                        <input type="range" id="in-floor" min="1" max="20" step="1" value="3">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 오른쪽: 결과 및 시각화 -->
+        <div class="w-full lg:w-2/3 p-6 flex flex-col">
+            
+            <!-- 실시간 계산 대시보드 -->
+            <div class="grid grid-cols-3 gap-4 mb-8">
+                <div id="card-cov" class="bg-gray-50 p-4 rounded-xl border border-gray-200 text-center transition-colors">
+                    <p class="text-sm text-gray-500 font-bold">현재 건폐율</p>
+                    <p class="text-2xl font-black mt-1" id="res-cov">50.0%</p>
+                    <p class="text-xs mt-1" id="msg-cov">기준(60%) 이내</p>
+                </div>
+                <div id="card-far" class="bg-gray-50 p-4 rounded-xl border border-gray-200 text-center transition-colors">
+                    <p class="text-sm text-gray-500 font-bold">현재 용적률</p>
+                    <p class="text-2xl font-black mt-1" id="res-far">150.0%</p>
+                    <p class="text-xs mt-1" id="msg-far">기준(200%) 이내</p>
+                </div>
+                <div class="bg-blue-50 p-4 rounded-xl border border-blue-200 text-center">
+                    <p class="text-sm text-blue-600 font-bold">총 연면적</p>
+                    <p class="text-2xl text-blue-700 font-black mt-1" id="res-total">750 m²</p>
+                    <p class="text-xs text-blue-500 mt-1">모든 층 바닥의 합</p>
+                </div>
+            </div>
+
+            <!-- 시각화 영역 -->
+            <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8">
+                
+                <!-- 건폐율 시각화 (위에서 본 모습) -->
+                <div class="flex flex-col items-center">
+                    <h3 class="text-lg font-bold text-gray-700 mb-4">위에서 본 모습 (건폐율)</h3>
+                    <div class="relative w-64 h-64 bg-green-100 border-4 border-green-500 rounded-lg shadow-inner flex items-center justify-center">
+                        <span class="absolute top-2 left-2 text-xs font-bold text-green-700">대지면적</span>
+                        <div id="vis-top-building" class="building-part bg-gray-400 border-2 border-gray-600 flex items-center justify-center shadow-md">
+                            <span class="text-xs font-bold text-white drop-shadow-md">건축면적</span>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-500 mt-4 text-center">건축면적이 대지를 얼마나 덮고 있는지<br>한눈에 확인합니다.</p>
+                </div>
+
+                <!-- 용적률 시각화 (옆에서 본 모습) -->
+                <div class="flex flex-col items-center">
+                    <h3 class="text-lg font-bold text-gray-700 mb-4">옆에서 본 모습 (용적률)</h3>
+                    <div class="relative w-64 h-64 border-b-4 border-green-500 flex items-end justify-center pb-0">
+                        <span class="absolute bottom-[-24px] text-xs font-bold text-green-700">지표면 (대지)</span>
+                        <div id="vis-side-building" class="flex flex-col-reverse items-center justify-start w-full gap-[1px]">
+                            <!-- 층 블록이 JS로 여기에 추가됩니다 -->
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-500 mt-4 text-center">층이 높아질수록 용적률이 커지며<br>연면적이 늘어납니다.</p>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM 요소 불러오기
+        const inMaxCov = document.getElementById('in-max-cov');
+        const inMaxFar = document.getElementById('in-max-far');
+        const inLand = document.getElementById('in-land');
+        const inBuild = document.getElementById('in-build');
+        const inFloor = document.getElementById('in-floor');
+
+        const valMaxCov = document.getElementById('val-max-cov');
+        const valMaxFar = document.getElementById('val-max-far');
+        const valLand = document.getElementById('val-land');
+        const valBuild = document.getElementById('val-build');
+        const valFloor = document.getElementById('val-floor');
+
+        const resCov = document.getElementById('res-cov');
+        const resFar = document.getElementById('res-far');
+        const resTotal = document.getElementById('res-total');
+        
+        const cardCov = document.getElementById('card-cov');
+        const cardFar = document.getElementById('card-far');
+        const msgCov = document.getElementById('msg-cov');
+        const msgFar = document.getElementById('msg-far');
+
+        const visTopBuilding = document.getElementById('vis-top-building');
+        const visSideBuilding = document.getElementById('vis-side-building');
+
+        // 업데이트 함수
+        function updateSimulator() {
+            // 값 가져오기
+            const maxCov = parseFloat(inMaxCov.value);
+            const maxFar = parseFloat(inMaxFar.value);
+            const land = parseFloat(inLand.value);
+            
+            // 건축면적은 대지면적을 넘을 수 없음 (슬라이더 max 속성 동적 업데이트)
+            inBuild.max = land;
+            if(parseFloat(inBuild.value) > land) {
+                inBuild.value = land;
+            }
+            const build = parseFloat(inBuild.value);
+            const floor = parseInt(inFloor.value);
+
+            // 텍스트 업데이트
+            valMaxCov.textContent = maxCov + '%';
+            valMaxFar.textContent = maxFar + '%';
+            valLand.textContent = land + ' m²';
+            valBuild.textContent = build + ' m²';
+            valFloor.textContent = floor + ' 층';
+
+            // 계산 로직
+            const currentCov = (build / land) * 100;
+            const totalArea = build * floor;
+            const currentFar = (totalArea / land) * 100;
+
+            // 결과 화면 업데이트
+            resCov.textContent = currentCov.toFixed(1) + '%';
+            resFar.textContent = currentFar.toFixed(1) + '%';
+            resTotal.textContent = totalArea + ' m²';
+
+            // 건폐율 초과 판별
+            const isCovExceeded = currentCov > maxCov;
+            if (isCovExceeded) {
+                cardCov.className = "p-4 rounded-xl border text-center transition-colors bg-red-50 border-red-300 text-red-700";
+                msgCov.textContent = `기준(${maxCov}%) 초과!`;
+                msgCov.className = "text-xs mt-1 text-red-500 font-bold";
+                visTopBuilding.classList.replace('bg-gray-400', 'bg-red-400');
+                visTopBuilding.classList.replace('border-gray-600', 'border-red-600');
+            } else {
+                cardCov.className = "p-4 rounded-xl border text-center transition-colors bg-gray-50 border-gray-200";
+                msgCov.textContent = `기준(${maxCov}%) 이내`;
+                msgCov.className = "text-xs mt-1 text-gray-500";
+                visTopBuilding.classList.replace('bg-red-400', 'bg-gray-400');
+                visTopBuilding.classList.replace('border-red-600', 'border-gray-600');
+            }
+
+            // 용적률 초과 판별
+            const isFarExceeded = currentFar > maxFar;
+            if (isFarExceeded) {
+                cardFar.className = "p-4 rounded-xl border text-center transition-colors bg-red-50 border-red-300 text-red-700";
+                msgFar.textContent = `기준(${maxFar}%) 초과!`;
+                msgFar.className = "text-xs mt-1 text-red-500 font-bold";
+            } else {
+                cardFar.className = "p-4 rounded-xl border text-center transition-colors bg-gray-50 border-gray-200";
+                msgFar.textContent = `기준(${maxFar}%) 이내`;
+                msgFar.className = "text-xs mt-1 text-gray-500";
+            }
+
+            // 1. 위에서 본 모습 시각화 업데이트 (건폐율 면적 비율 적용)
+            // 넓이 비율에 맞추기 위해 제곱근을 사용합니다.
+            const sizeRatio = Math.sqrt(currentCov / 100) * 100;
+            visTopBuilding.style.width = sizeRatio + '%';
+            visTopBuilding.style.height = sizeRatio + '%';
+
+            // 2. 옆에서 본 모습 시각화 업데이트 (층별 블록 쌓기)
+            visSideBuilding.innerHTML = ''; // 기존 블록 초기화
+            const buildingWidth = sizeRatio; // 탑뷰와 동일한 너비 비율 사용
+            
+            // 건물 높이가 컨테이너를 넘어가지 않도록 동적 스케일 조절
+            const maxDisplayFloors = 20; 
+            const blockHeight = 200 / Math.max(floor, 10); 
+
+            for (let i = 1; i <= floor; i++) {
+                const block = document.createElement('div');
+                // 현재 층까지의 용적률 계산
+                const farAtThisFloor = ((build * i) / land) * 100;
+                
+                // 블록 스타일 설정
+                let blockColor = "bg-gray-400 border-gray-600";
+                let textOpacity = "opacity-0"; // 기본적으로 텍스트 숨김
+
+                // 기준 용적률을 초과하는 층부터 붉은색으로 표시
+                if (farAtThisFloor > maxFar) {
+                    blockColor = "bg-red-400 border-red-600";
+                }
+
+                block.className = `building-part border-2 shadow-sm flex items-center justify-center text-[10px] font-bold text-white ${blockColor}`;
+                block.style.width = buildingWidth + '%';
+                block.style.height = blockHeight + 'px';
+                
+                // 공간이 허락될 때만 층수 표시
+                if(blockHeight > 15) {
+                    block.innerHTML = `<span class="drop-shadow-md">${i}F</span>`;
+                }
+                
+                visSideBuilding.appendChild(block);
+            }
+        }
+
+        // 이벤트 리스너 등록
+        const inputs = [inMaxCov, inMaxFar, inLand, inBuild, inFloor];
+        inputs.forEach(input => {
+            input.addEventListener('input', updateSimulator);
+        });
+
+        // 초기 실행
+        updateSimulator();
+    </script>
+</body>
+</html>
